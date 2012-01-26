@@ -24,18 +24,34 @@ module Astrails
         unless $DRY_RUN || $LOCAL
           if File.stat(@backup.path).size > MAX_S3_FILE_SIZE
             STDERR.puts "ERROR: File size exceeds maximum allowed for upload to S3 (#{MAX_S3_FILE_SIZE}): #{@backup.path}"
-            return
+            files = split(@backup.path, (MAX_S3_FILE_SIZE - 10000000))
+          else
+            files = [@backup.path]
           end
+
           benchmark = Benchmark.realtime do
             AWS::S3::Bucket.create(bucket)
-            File.open(@backup.path) do |file|
-              AWS::S3::S3Object.store(full_path, file, bucket)
+
+            # each file in here
+            files.each do |path|
+              File.open(path) do |file|
+                AWS::S3::S3Object.store(full_path, file, bucket)
+              end
             end
           end
           puts "...done" if $_VERBOSE
           puts("Upload took " + sprintf("%.2f", benchmark) + " second(s).") if $_VERBOSE
         end
       end
+
+      def split file, size
+        output = `split -db #{size} --verbose #{file} #{file}.`
+        files = output.scan(/`.*'/)
+        fnames = files.map do |f|
+          f.sub(/`/,'').sub(/'/,'')
+        end 
+        return fnames
+      end 
 
       def cleanup
         return if $LOCAL
